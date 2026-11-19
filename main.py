@@ -1,11 +1,26 @@
-import json, os, time
+import json, os, time, threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
 from telegram.error import TimedOut, NetworkError
 
-TOKEN = "8860716931:AAG_BTj7o9HlkTirwas3ljHQ3yP1pI2qs7k"
+# Token comes from Render Environment Variables, NOT from code
+TOKEN = os.environ.get("8860716931:AAEjNMbN9jKWXGNNOUBrHHiSeQiLJoD4pOU")
 ADMIN_IDS = [9054441429]
+
+# --- Flask for Render Free Web Service (to open a port) ---
+app_flask = Flask(__name__)
+@app_flask.route("/")
+def home():
+    return "1840 Bot is Live!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app_flask.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_flask, daemon=True).start()
+# --- End Flask ---
 
 USERS_FILE = "users.json"
 users_db = {}
@@ -221,11 +236,8 @@ def build_app():
 
 if __name__ == "__main__":
     print("1840 Bot Running...")
-    while True:
-        try:
-            app = build_app()
-            app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
-            break
-        except (TimedOut, NetworkError, Exception) as e:
-            print(f"Bot crashed with {e}, retrying in 5s...")
-            time.sleep(5)
+    if not TOKEN:
+        print("ERROR: BOT_TOKEN not set in Environment Variables!")
+    else:
+        app = build_app()
+        app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
