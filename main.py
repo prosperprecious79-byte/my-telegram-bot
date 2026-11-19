@@ -1,58 +1,55 @@
-import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-def keep_alive():
-    port = int(os.environ.get("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
-
-threading.Thread(target=keep_alive, daemon=True).start()
+import json, os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = "8860716931:AAFh65AzhHxbhYxwyHD24-6qa9ecZzSVy7Y"
-ADMIN_IDS = [9054441429]
+ADMIN_IDS = [9054441429]  # Put your Admin ID here
+
+USERS_FILE = "users.json"
 users_db = {}
 pending = {}
 anon_counter = 100
 
-jobs_db = {
-    1: {"title": "Virtual Assistant", "pay": "$400-$600/mo", "needed": 15, "available": 12},
-    2: {"title": "Customer Support Rep", "pay": "$500/mo", "needed": 20, "available": 18},
-    3: {"title": "Social Media Manager", "pay": "$600/mo", "needed": 8, "available": 8},
-    4: {"title": "Data Entry Specialist", "pay": "$350/mo", "needed": 10, "available": 5},
-}
+if os.path.exists(USERS_FILE):
+    try:
+        with open(USERS_FILE, "r") as f:
+            data = json.load(f)
+            users_db = {int(k): v for k, v in data.get("users_db", {}).items()}
+            pending = {int(k): v for k, v in data.get("pending", {}).items()}
+            anon_counter = data.get("anon_counter", 100)
+    except:
+        pass
+
+def save_db():
+    with open(USERS_FILE, "w") as f:
+        json.dump({"users_db": users_db, "pending": pending, "anon_counter": anon_counter}, f)
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
+def get_or_create_user(user):
+    global anon_counter
+    for k, v in users_db.items():
+        if v['telegram_id'] == user.id:
+            return k
+    anon_counter += 1
+    users_db[anon_counter] = {"telegram_id": user.id, "username": user.username, "name": user.full_name}
+    save_db()
+    return anon_counter
+
+# ===== USER COMMANDS =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Welcome to 1840 & Company Support\n\n"
-        "You are chatting with the 1840 Team.\n\n"
-        "Commands:\n"
-        "/message - Send a message to support\n"
-        "/jobs - See freelancing jobs & workers available\n"
-        "/status - Check your message status\n"
-        "/faq - Quick answers\n"
-        "/help - How this works"
-    )
+    await update.message.reply_text("👋 Welcome to 1840 & Company Support\n\nYou are chatting with the 1840 Team.\n\nCommands:\n/message - Send a message to support\n/status - Check your last message status\n/faq - Quick answers\n/help - How this works\n\nYou can send text, pictures, or files. Just type /message first.")
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Type /message to send a question. Type /jobs to see available freelancing jobs. You will only see '1840 & Company Support', not the staff's personal account.")
+    await update.message.reply_text("How it works:\n1. Type /message\n2. Send your question, picture, or file\n3. 1840 & Company Support will reply here")
 
 async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📌 1840 FAQ\n\n1. How to Apply? - Send /message and ask for open roles\n2. Do you hire from Nigeria? - Yes, globally\n3. What roles? - VA, Support, Marketing, Tech\n4. Payment? - Per role, after vetting\n\nFor personal help, use /message")
+    await update.message.reply_text("📌 1840 & Company - FAQ\n\n1. How to Apply? - Send /message and ask for open roles\n2. Do you hire from Nigeria? - Yes, we hire globally\n3. What roles? - VA, Customer Support, Marketing, Tech, Design\n\nFor personal help, use /message")
 
 async def message_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_message'] = True
-    await update.message.reply_text("✍️ Type your message now. It will go to 1840 & Company Support.")
+    await update.message.reply_text("✍️ Send your message now. You can send text, picture, or file. It will go to 1840 & Company Support.")
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -67,43 +64,44 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_message'] = False
     await update.message.reply_text("Cancelled. Use /message to start again.")
 
-async def jobs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "💼 1840 & Company - Freelancing Jobs Available\n\n"
-    total_needed = 0
-    total_available = 0
-    for job_id, job in jobs_db.items():
-        status = "🟢 Hiring" if job['available'] < job['needed'] else "🔴 Full"
-        slots_left = job['needed'] - job['available']
-        text += f"{job_id}. {job['title']} - {job['pay']}\nWorkers Needed: {job['needed']} | Workers Joined: {job['available']} | Slots Left: {slots_left}\nStatus: {status}\n\n"
-        total_needed += job['needed']
-        total_available += job['available']
-    text += f"📊 Total: {total_available} workers joined out of {total_needed} needed\n\nTo apply, send /message and type the job name."
-    await update.message.reply_text(text)
-
+# ===== HANDLE USER MESSAGE (TEXT + PHOTO + FILE) =====
 async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global anon_counter
     user = update.effective_user
     if is_admin(user.id):
-        await update.message.reply_text("Admins: Use /reply [id] [message]. Use /list to see pending.")
+        await update.message.reply_text("Admins: Use /reply [id] [message] to reply. For photo/file, send it with caption: /reply 123 your text")
         return
     if not context.user_data.get('waiting_for_message'):
         await update.message.reply_text("To send to support, type /message first.")
         return
-    anon_id = None
-    for k, v in users_db.items():
-        if v['telegram_id'] == user.id:
-            anon_id = k
-            break
-    if not anon_id:
-        anon_counter += 1
-        anon_id = anon_counter
-        users_db[anon_id] = {"telegram_id": user.id, "username": user.username, "name": user.full_name}
-    pending[anon_id] = update.message.text
+
+    anon_id = get_or_create_user(user)
+    msg = update.message
+    label = msg.text or msg.caption or "[Photo / File]"
+    pending[anon_id] = label
     context.user_data['waiting_for_message'] = False
+    save_db()
+
+    header = f"📩 NEW MESSAGE\n\nID: {anon_id}\nFrom: {user.full_name} (@{user.username})\nUser Telegram ID: {user.id}\n\n"
+
     for admin_id in ADMIN_IDS:
-        await context.bot.send_message(chat_id=admin_id, text=f"📩 NEW MESSAGE\n\nID: {anon_id}\nFrom: {user.full_name} (@{user.username})\nUser Telegram ID: {user.id}\n\nMessage:\n{update.message.text}\n\nReply with:\n/reply {anon_id} your reply here")
+        # Forward the actual photo/file so admin can view/download it
+        try:
+            if msg.photo:
+                await context.bot.send_photo(chat_id=admin_id, photo=msg.photo[-1].file_id, caption=header + f"Message:\n{msg.caption or ''}\n\nReply with:\n/reply {anon_id} your reply here")
+            elif msg.document:
+                await context.bot.send_document(chat_id=admin_id, document=msg.document.file_id, caption=header + f"File: {msg.document.file_name}\nCaption: {msg.caption or ''}\n\nReply with:\n/reply {anon_id} your reply here")
+            elif msg.video:
+                await context.bot.send_video(chat_id=admin_id, video=msg.video.file_id, caption=header + f"Caption: {msg.caption or ''}\n\nReply with:\n/reply {anon_id} your reply here")
+            elif msg.voice:
+                await context.bot.send_voice(chat_id=admin_id, voice=msg.voice.file_id, caption=header + "Voice message")
+            else:
+                await context.bot.send_message(chat_id=admin_id, text=header + f"Message:\n{msg.text}\n\nReply with:\n/reply {anon_id} your reply here")
+        except Exception as e:
+            await context.bot.send_message(chat_id=admin_id, text=header + f"Message:\n{label}\n\n(Forward failed: {e})")
+
     await update.message.reply_text("✅ Sent to 1840 & Company Support. You will get a reply here soon.")
 
+# ===== ADMIN REPLY (TEXT) =====
 async def reply_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -120,7 +118,48 @@ async def reply_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=user_data['telegram_id'], text=f"💬 1840 & Company Support:\n\n{reply_text}")
         if anon_id in pending:
             del pending[anon_id]
+        save_db()
         await update.message.reply_text(f"✅ Replied to {anon_id} as 1840 & Company Support")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+# ===== ADMIN REPLY WITH PHOTO / FILE =====
+# Admin: send photo/file with caption "/reply 123 your text"
+async def handle_admin_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return
+    msg = update.message
+    caption = msg.caption or ""
+    if not caption.startswith("/reply"):
+        await update.message.reply_text("To send photo/file to a user, add caption: /reply [id] [message]\nExample caption: /reply 123 Here is the form")
+        return
+    parts = caption.split(maxsplit=2)
+    if len(parts) < 2:
+        await update.message.reply_text("Use caption: /reply [id] [message]")
+        return
+    try:
+        anon_id = int(parts[1])
+        reply_text = parts[2] if len(parts) > 2 else ""
+        user_data = users_db.get(anon_id)
+        if not user_data:
+            await update.message.reply_text("User not found.")
+            return
+        chat_id = user_data['telegram_id']
+        prefix = f"💬 1840 & Company Support:\n\n{reply_text}"
+        if msg.photo:
+            await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id, caption=prefix)
+        elif msg.document:
+            await context.bot.send_document(chat_id=chat_id, document=msg.document.file_id, caption=prefix)
+        elif msg.video:
+            await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id, caption=prefix)
+        elif msg.voice:
+            await context.bot.send_voice(chat_id=chat_id, voice=msg.voice.file_id)
+            if reply_text:
+                await context.bot.send_message(chat_id=chat_id, text=prefix)
+        if anon_id in pending:
+            del pending[anon_id]
+        save_db()
+        await update.message.reply_text(f"✅ Sent photo/file to {anon_id}")
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
@@ -155,6 +194,7 @@ async def close_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     anon_id = int(context.args[0])
     if anon_id in pending:
         del pending[anon_id]
+    save_db()
     await update.message.reply_text(f"Closed conversation {anon_id}")
 
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,40 +210,6 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(f"Total Users: {len(users_db)}\nPending: {len(pending)}")
 
-async def addjob_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    try:
-        full = " ".join(context.args)
-        parts = [p.strip() for p in full.split("|")]
-        title, pay, needed, available = parts[0], parts[1], int(parts[2]), int(parts[3])
-        new_id = max(jobs_db.keys()) + 1 if jobs_db else 1
-        jobs_db[new_id] = {"title": title, "pay": pay, "needed": needed, "available": available}
-        await update.message.reply_text(f"✅ Added Job {new_id}: {title}")
-    except:
-        await update.message.reply_text("Use: /addjob Title | Pay | Needed | Available\nExample: /addjob Graphic Designer | $500/mo | 10 | 3")
-
-async def updatejob_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    try:
-        job_id = int(context.args[0])
-        new_available = int(context.args[1])
-        jobs_db[job_id]["available"] = new_available
-        await update.message.reply_text(f"✅ Updated {jobs_db[job_id]['title']}: Workers Joined now {new_available}")
-    except:
-        await update.message.reply_text("Use: /updatejob [id] [new number]\nExample: /updatejob 1 14")
-
-async def removejob_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    try:
-        job_id = int(context.args[0])
-        removed = jobs_db.pop(job_id)
-        await update.message.reply_text(f"✅ Removed: {removed['title']}")
-    except:
-        await update.message.reply_text("Use: /removejob [id]")
-
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_cmd))
@@ -211,16 +217,17 @@ app.add_handler(CommandHandler("faq", faq))
 app.add_handler(CommandHandler("message", message_cmd))
 app.add_handler(CommandHandler("status", status_cmd))
 app.add_handler(CommandHandler("cancel", cancel_cmd))
-app.add_handler(CommandHandler("jobs", jobs_cmd))
 app.add_handler(CommandHandler("reply", reply_cmd))
 app.add_handler(CommandHandler("list", list_cmd))
 app.add_handler(CommandHandler("view", view_cmd))
 app.add_handler(CommandHandler("close", close_cmd))
 app.add_handler(CommandHandler("broadcast", broadcast_cmd))
 app.add_handler(CommandHandler("stats", stats_cmd))
-app.add_handler(CommandHandler("addjob", addjob_cmd))
-app.add_handler(CommandHandler("updatejob", updatejob_cmd))
-app.add_handler(CommandHandler("removejob", removejob_cmd))
+# User can send text, photo, document, video, voice
+app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VIDEO | filters.VOICE, handle_admin_media if False else handle_user_message))
+# This handles admin media separately - we check admin inside, so we need a second handler for admin media
+app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL | filters.VIDEO | filters.VOICE) & filters.CaptionRegex(r"^/reply"), handle_admin_media))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
+
 print("1840 Bot Running...")
 app.run_polling()
