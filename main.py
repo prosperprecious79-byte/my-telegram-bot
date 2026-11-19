@@ -1,8 +1,10 @@
-import json, os
+import json, os, time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.request import HTTPXRequest
+from telegram.error import TimedOut, NetworkError
 
-TOKEN = "8860716931:AAFh65AzhHxbhYxwyHD24-6qa9ecZzSVy7Y"
+TOKEN = "8860716931:AAG_BTj7o9HlkTirwas3ljHQ3yP1pI2qs7k"
 ADMIN_IDS = [9054441429]
 
 USERS_FILE = "users.json"
@@ -99,28 +101,21 @@ async def handle_admin_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     msg = update.message
-
-    # ADMIN SENDING PHOTO / FILE
     if is_admin(user.id):
         if msg.caption and msg.caption.startswith("/reply"):
             await handle_admin_media(update, context)
         else:
             await update.message.reply_text("Admins: Use /reply [id] [message] to reply. For photo/file, send it with caption: /reply 123 your text")
         return
-
-    # NORMAL USER
     if not context.user_data.get('waiting_for_message'):
         await update.message.reply_text("To send to support, type /message first.")
         return
-
     anon_id = get_or_create_user(user)
     label = msg.text or msg.caption or "[Photo / File]"
     pending[anon_id] = label
     context.user_data['waiting_for_message'] = False
     save_db()
-
     header = f"📩 NEW MESSAGE\n\nID: {anon_id}\nFrom: {user.full_name} (@{user.username})\nUser Telegram ID: {user.id}\n\n"
-
     for admin_id in ADMIN_IDS:
         try:
             if msg.photo:
@@ -135,7 +130,6 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await context.bot.send_message(chat_id=admin_id, text=header + f"Message:\n{msg.text}\n\nReply with:\n/reply {anon_id} your reply here")
         except Exception as e:
             await context.bot.send_message(chat_id=admin_id, text=header + f"Message:\n{label}\n\n(Forward failed: {e})")
-
     await update.message.reply_text("✅ Sent to 1840 & Company Support. You will get a reply here soon.")
 
 async def reply_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -206,21 +200,32 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(f"Total Users: {len(users_db)}\nPending: {len(pending)}")
 
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_cmd))
-app.add_handler(CommandHandler("faq", faq))
-app.add_handler(CommandHandler("message", message_cmd))
-app.add_handler(CommandHandler("status", status_cmd))
-app.add_handler(CommandHandler("cancel", cancel_cmd))
-app.add_handler(CommandHandler("reply", reply_cmd))
-app.add_handler(CommandHandler("list", list_cmd))
-app.add_handler(CommandHandler("view", view_cmd))
-app.add_handler(CommandHandler("close", close_cmd))
-app.add_handler(CommandHandler("broadcast", broadcast_cmd))
-app.add_handler(CommandHandler("stats", stats_cmd))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
-app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VIDEO | filters.VOICE, handle_user_message))
+def build_app():
+    request = HTTPXRequest(connect_timeout=30.0, read_timeout=30.0, write_timeout=30.0, pool_timeout=30.0)
+    app = ApplicationBuilder().token(TOKEN).request(request).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("faq", faq))
+    app.add_handler(CommandHandler("message", message_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
+    app.add_handler(CommandHandler("cancel", cancel_cmd))
+    app.add_handler(CommandHandler("reply", reply_cmd))
+    app.add_handler(CommandHandler("list", list_cmd))
+    app.add_handler(CommandHandler("view", view_cmd))
+    app.add_handler(CommandHandler("close", close_cmd))
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VIDEO | filters.VOICE, handle_user_message))
+    return app
 
-print("1840 Bot Running...")
-app.run_polling()
+if __name__ == "__main__":
+    print("1840 Bot Running...")
+    while True:
+        try:
+            app = build_app()
+            app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+            break
+        except (TimedOut, NetworkError, Exception) as e:
+            print(f"Bot crashed with {e}, retrying in 5s...")
+            time.sleep(5)
