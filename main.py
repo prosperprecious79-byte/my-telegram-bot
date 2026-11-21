@@ -1,26 +1,10 @@
-import json, os, time, threading
-from flask import Flask
+import json, os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
-from telegram.error import TimedOut, NetworkError
 
-# Token comes from Render Environment Variables, NOT from code
-TOKEN = os.environ.get("8860716931:AAEjNMbN9jKWXGNNOUBrHHiSeQiLJoD4pOU")
+TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_IDS = [9054441429]
-
-# --- Flask for Render Free Web Service (to open a port) ---
-app_flask = Flask(__name__)
-@app_flask.route("/")
-def home():
-    return "1840 Bot is Live!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app_flask.run(host="0.0.0.0", port=port)
-
-threading.Thread(target=run_flask, daemon=True).start()
-# --- End Flask ---
 
 USERS_FILE = "users.json"
 users_db = {}
@@ -61,7 +45,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("How it works:\n1. Type /message\n2. Send your question, picture, or file\n3. 1840 & Company Support will reply here")
 
 async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📌 1840 & Company - FAQ\n\n1. How to Apply? - Send /message and ask for open roles\n2. Do you hire from Nigeria? - Yes, we hire globally\n3. What roles? - VA, Customer Support, Marketing, Tech, Design\n\nFor personal help, use /message")
+    await update.message.reply_text(
+        "📌 1840 & Company - FAQ\n\n"
+        "1. How to Apply?\nSend /message and ask for open roles\n\n"
+        "2. What roles do you have?\nVA, Customer Support, Marketing, Tech, Design\n\n"
+        "3. How does payment work?\nWe pay via Bank Deposit and Crypto.\nSend /message to ask about payment details for your role.\n\n"
+        "4. What payment methods do you accept?\n✅ Bank Deposit\n✅ Crypto (USDT / BTC)\n\n"
+        "For personal help, use /message"
+    )
 
 async def message_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_message'] = True
@@ -106,10 +97,12 @@ async def handle_admin_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await context.bot.send_voice(chat_id=chat_id, voice=msg.voice.file_id)
             if reply_text:
                 await context.bot.send_message(chat_id=chat_id, text=prefix)
+        elif msg.audio:
+            await context.bot.send_audio(chat_id=chat_id, audio=msg.audio.file_id, caption=prefix)
         if anon_id in pending:
             del pending[anon_id]
         save_db()
-        await update.message.reply_text(f"✅ Sent photo/file to {anon_id}")
+        await update.message.reply_text(f"✅ Sent media to {anon_id}")
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
@@ -141,6 +134,11 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await context.bot.send_video(chat_id=admin_id, video=msg.video.file_id, caption=header + f"Caption: {msg.caption or ''}\n\nReply with:\n/reply {anon_id} your reply here")
             elif msg.voice:
                 await context.bot.send_voice(chat_id=admin_id, voice=msg.voice.file_id, caption=header + "Voice message")
+            elif msg.audio:
+                await context.bot.send_audio(chat_id=admin_id, audio=msg.audio.file_id, caption=header + f"Caption: {msg.caption or ''}")
+            elif msg.sticker:
+                await context.bot.send_sticker(chat_id=admin_id, sticker=msg.sticker.file_id)
+                await context.bot.send_message(chat_id=admin_id, text=header + f"Sticker from {anon_id}\n\nReply with:\n/reply {anon_id} your reply here")
             else:
                 await context.bot.send_message(chat_id=admin_id, text=header + f"Message:\n{msg.text}\n\nReply with:\n/reply {anon_id} your reply here")
         except Exception as e:
@@ -230,14 +228,4 @@ def build_app():
     app.add_handler(CommandHandler("close", close_cmd))
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VIDEO | filters.VOICE, handle_user_message))
-    return app
-
-if __name__ == "__main__":
-    print("1840 Bot Running...")
-    if not TOKEN:
-        print("ERROR: BOT_TOKEN not set in Environment Variables!")
-    else:
-        app = build_app()
-        app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle
