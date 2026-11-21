@@ -228,4 +228,14 @@ def build_app():
     app.add_handler(CommandHandler("close", close_cmd))
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_message))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VIDEO | filters.VOICE | filters.AUDIO | filters.Sticker.ALL, handle_user_message))
+    return app
+
+if __name__ == "__main__":
+    print("1840 Bot Running...")
+    if not TOKEN:
+        print("ERROR: BOT_TOKEN not set!")
+    else:
+        app = build_app()
+        app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
