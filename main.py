@@ -2,7 +2,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, CallbackQueryHandler, ContextTypes, filters
 
-TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN") or os.getenv("TOKEN")
+TOKEN = (os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN") or os.getenv("TOKEN") or "").strip().strip('"').strip("'")
 
 # CHANGE THIS
 ADMIN_IDS = [9054441429]
@@ -99,7 +99,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Cancelled. Send /start to try again.")
     return ConversationHandler.END
 
-# ---------- PROFILE / MYJOB / SUPPORT ----------
+# ---------- PROFILE / MYJOB ----------
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid not in USERS:
@@ -277,7 +277,6 @@ async def reply_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     uid = update.effective_user.id
-    # Admin sending photo/file with caption /reply 101 ...
     if is_admin(uid):
         caption = (msg.caption or "") if msg.caption else ""
         if caption.startswith("/reply"):
@@ -298,7 +297,6 @@ async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE
                 pass
         await msg.reply_text("To reply a user, use:\n/reply 101 your message\n\nGet ID from /users")
         return
-    # Normal user: forward text, photo, file to admin
     name = USERS.get(uid, {}).get("name", update.effective_user.first_name)
     short_id = USERS.get(uid, {}).get("short_id", "No ID")
     header = f"New Message from {name}\nID: {short_id}\n\nReply with:\n/reply {short_id} your reply"
@@ -310,4 +308,108 @@ async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
     await msg.reply_text("Sent to admin. Admin will reply you soon.")
 
-# ----------
+# ---------- ADMIN: ADD / EDIT / DELETE JOB ----------
+ADD_TITLE, ADD_PAY, ADD_NEEDED = range(3, 6)
+
+async def addjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Only admin.")
+        return ConversationHandler.END
+    await update.message.reply_text("What is the job title?")
+    return ADD_TITLE
+
+async def addjob_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["new_title"] = update.message.text
+    await update.message.reply_text("What is the pay?")
+    return ADD_PAY
+
+async def addjob_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["new_pay"] = update.message.text
+    await update.message.reply_text("How many workers needed?")
+    return ADD_NEEDED
+
+async def addjob_needed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        needed = int(update.message.text)
+    except Exception:
+        await update.message.reply_text("Send number only.")
+        return ADD_NEEDED
+    new_id = max([j["id"] for j in JOBS], default=0) + 1
+    JOBS.append({"id": new_id, "title": context.user_data["new_title"], "pay": context.user_data["new_pay"], "needed": needed, "joined": 0})
+    await update.message.reply_text(f"Job added:\n{new_id}. {context.user_data['new_title']} - {context.user_data['new_pay']}")
+    return ConversationHandler.END
+
+async def editjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Only admin.")
+        return
+    try:
+        job_id = int(context.args[0]); field = context.args[1].lower(); value = " ".join(context.args[2:])
+        for j in JOBS:
+            if j["id"] == job_id:
+                if field in ["needed", "joined"]:
+                    j[field] = int(value)
+                elif field in ["title", "pay"]:
+                    j[field] = value
+                else:
+                    await update.message.reply_text("Field must be: title | pay | needed | joined")
+                    return
+                await update.message.reply_text(f"Updated:\n{j['id']}. {j['title']} - {j['pay']}")
+                return
+        await update.message.reply_text("Job not found.")
+    except Exception:
+        await update.message.reply_text("Usage:\n/editjob 5 pay $600/mo\n/editjob 5 needed 20\n/editjob 5 title New Title")
+
+async def deletejob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Only admin.")
+        return
+    try:
+        job_id = int(context.args[0])
+        for j in JOBS:
+            if j["id"] == job_id:
+                JOBS.remove(j)
+                await update.message.reply_text(f"Deleted job {job_id}: {j['title']}")
+                return
+        await update.message.reply_text("Job not found.")
+    except Exception:
+        await update.message.reply_text("Usage: /deletejob 5")
+
+def build_app():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("profile", profile_command))
+    app.add_handler(CommandHandler("jobs", jobs_command))
+    app.add_handler(CommandHandler("apply", apply_command))
+    app.add_handler(CommandHandler("myjob", myjob_command))
+    app.add_handler(CommandHandler("myjobs", myjob_command))
+    app.add_handler(CommandHandler("support", support_command))
+    app.add_handler(CommandHandler("users", users_command))
+    app.add_handler(CommandHandler("assignjob", assignjob_command))
+    app.add_handler(CommandHandler("editjob", editjob_command))
+    app.add_handler(CommandHandler("deletejob", deletejob_command))
+    app.add_handler(CommandHandler("message", message_command))
+    app.add_handler(CommandHandler("reply", reply_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("start", start_command)],
+        states={REG_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_name)], REG_LOC: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_loc)], REG_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_email)]},
+        fallbacks=[CommandHandler("cancel", cancel_command)],
+    ))
+    app.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("addjob", addjob_command)],
+        states={ADD_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, addjob_title)], ADD_PAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, addjob_pay)], ADD_NEEDED: [MessageHandler(filters.TEXT & ~filters.COMMAND, addjob_needed)]},
+        fallbacks=[CommandHandler("cancel", cancel_command)],
+    ))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_all_messages))
+    return app
+
+if __name__ == "__main__":
+    print(f"TOKEN present: {bool(TOKEN)} len={len(TOKEN) if TOKEN else 0}", flush=True)
+    if not TOKEN:
+        print("ERROR: BOT_TOKEN not set! Check FadeHost Env Vars", flush=True)
+        import time
+        while True:
+            time.sleep(60)
+    else:
+        print("1840 Bot Running...", flush=True)
+        build_app().run_polling()
