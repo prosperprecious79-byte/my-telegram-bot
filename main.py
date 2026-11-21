@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
 
-TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = os.environ.get("8860716931:AAEjNMbN9jKWXGNNOUBrHHiSeQiLJoD4pOU")
 ADMIN_IDS = [9054441429]
 
 USERS_FILE = "users.json"
