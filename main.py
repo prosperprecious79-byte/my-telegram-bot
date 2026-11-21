@@ -54,7 +54,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Welcome back {u['name']} to 1840 & Company!\n\n"
             f"Your ID: {u['short_id']}\n\n"
             "Commands:\n"
-            "/jobs - See jobs\n"
+            "/jobs - View jobs\n"
             "/apply - Apply for a job\n"
             "/myjob - My job\n"
             "/profile - My profile\n"
@@ -67,7 +67,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reg_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["reg_name"] = update.message.text.strip()
-    await update.message.reply_text("Thanks! What is your location?")
+    await update.message.reply_text("Thank you. What is your location?")
     return REG_LOC
 
 async def reg_loc(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,14 +78,14 @@ async def reg_loc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reg_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     email = update.message.text.strip()
     if "@" not in email or "." not in email:
-        await update.message.reply_text("That email no look correct. Send valid email.")
+        await update.message.reply_text("That email address appears to be invalid. Please send a valid email address.")
         return REG_EMAIL
     uid = update.effective_user.id
     short_id = NEXT_SHORT_ID[0]
     NEXT_SHORT_ID[0] += 1
     USERS[uid] = {"short_id": short_id, "name": context.user_data["reg_name"], "location": context.user_data["reg_loc"], "email": email, "username": update.effective_user.username or "", "my_jobs": []}
     await update.message.reply_text(
-        f"Registration complete!\n\nYour ID: {short_id}\nName: {USERS[uid]['name']}\nLocation: {USERS[uid]['location']}\nEmail: {email}\n\nNow use /jobs to see jobs and tap Apply.",
+        f"Registration complete!\n\nYour ID: {short_id}\nName: {USERS[uid]['name']}\nLocation: {USERS[uid]['location']}\nEmail: {email}\n\nPlease use /jobs to view jobs and tap Apply.",
         reply_markup=main_menu()
     )
     for aid in ADMIN_IDS:
@@ -96,14 +96,14 @@ async def reg_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Cancelled. Send /start to try again.")
+    await update.message.reply_text("Cancelled. Please send /start to try again.")
     return ConversationHandler.END
 
 # ---------- PROFILE / MYJOB ----------
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid not in USERS:
-        await update.message.reply_text("You never register yet. Send /start to register.")
+        await update.message.reply_text("You have not registered yet. Please send /start to register.")
         return
     u = USERS[uid]
     await update.message.reply_text(f"My Profile\n\nID: {u['short_id']}\nName: {u['name']}\nLocation: {u['location']}\nEmail: {u['email']}\nUsername: @{u['username']}\nJobs: {len(u['my_jobs'])}")
@@ -111,10 +111,10 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def myjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid not in USERS:
-        await update.message.reply_text("Send /start to register first.")
+        await update.message.reply_text("Please send /start to register first.")
         return
     if not USERS[uid]["my_jobs"]:
-        await update.message.reply_text("You never get any job yet.\nUse /jobs and tap Apply.")
+        await update.message.reply_text("You have not received any job yet.\nPlease use /jobs and tap Apply.")
         return
     lines = ["My Job:\n"]
     for jid in USERS[uid]["my_jobs"]:
@@ -124,14 +124,14 @@ async def myjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Support\n\nSend /message to contact admin.")
+    await update.message.reply_text("Support\n\nPlease send /message to contact admin.")
 
 # ---------- JOBS + APPLY BY BUTTON ----------
 async def jobs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not JOBS:
-        await update.message.reply_text("No jobs available now. Check back later.")
+        await update.message.reply_text("No jobs are available at the moment. Please check back later.")
         return
-    text = "1840 & Company - Jobs Available\n\nTap Apply under any job:\n"
+    text = "1840 & Company - Jobs Available\n\nPlease tap Apply under any job:\n"
     kb = []
     for j in JOBS:
         left = j["needed"] - j["joined"]
@@ -150,18 +150,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
     data = q.data
     if data == "menu_jobs":
-        await q.message.reply_text("Send /jobs to see jobs with Apply buttons.")
+        await q.message.reply_text("Please send /jobs to view jobs with Apply buttons.")
         return
     if data == "menu_profile":
         if uid not in USERS:
-            await q.message.reply_text("Send /start to register first.")
+            await q.message.reply_text("Please send /start to register first.")
             return
         u = USERS[uid]
         await q.message.reply_text(f"My Profile\n\nID: {u['short_id']}\nName: {u['name']}\nLocation: {u['location']}\nEmail: {u['email']}")
         return
     if data == "menu_myjobs":
         if uid not in USERS or not USERS[uid]["my_jobs"]:
-            await q.message.reply_text("You never get any job yet. Use /jobs and tap Apply.")
+            await q.message.reply_text("You have not received any job yet. Please use /jobs and tap Apply.")
             return
         lines = ["My Job:\n"]
         for jid in USERS[uid]["my_jobs"]:
@@ -171,11 +171,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.reply_text("\n".join(lines))
         return
     if data == "menu_message":
-        await q.message.reply_text("Send your message here, or use /message. You fit send text, photo or file.")
+        await q.message.reply_text("Please send your message here, or use /message. You can send text, photos or files.")
         return
     if data.startswith("apply_"):
         if uid not in USERS:
-            await q.message.reply_text("Send /start to register first before you apply.")
+            await q.message.reply_text("Please send /start to register first before you apply.")
             return
         jid = int(data.replace("apply_", ""))
         j = get_job(jid)
@@ -183,14 +183,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.message.reply_text("Job not found.")
             return
         if jid in USERS[uid]["my_jobs"]:
-            await q.message.reply_text("You already applied for this job.")
+            await q.message.reply_text("You have already applied for this job.")
             return
         if j["joined"] >= j["needed"]:
             await q.message.reply_text("Sorry, this job is Full.")
             return
         j["joined"] += 1
         USERS[uid]["my_jobs"].append(jid)
-        await q.message.reply_text(f"You applied for {j['title']} - {j['pay']}\nCheck /myjob to see am. Admin will contact you.")
+        await q.message.reply_text(f"You have applied for {j['title']} - {j['pay']}\nPlease check /myjob to view it. Admin will contact you.")
         for aid in ADMIN_IDS:
             try:
                 await context.bot.send_message(aid, f"New Application\n\nID: {USERS[uid]['short_id']}\nName: {USERS[uid]['name']} applied for {j['title']}\nLocation: {USERS[uid]['location']}\nEmail: {USERS[uid]['email']}")
@@ -200,7 +200,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- ADMIN: SEE USERS ----------
 async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Only admin.")
+        await update.message.reply_text("Access denied. Admin only.")
         return
     if not USERS:
         await update.message.reply_text("No users yet.")
@@ -214,51 +214,51 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- ADMIN: GIVE JOB TO USER ----------
 async def assignjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Only admin.")
+        await update.message.reply_text("Access denied. Admin only.")
         return
     try:
         short_id = int(context.args[0]); job_id = int(context.args[1])
     except Exception:
-        await update.message.reply_text("Usage:\n/assignjob 101 5\n\nGet user ID from /users")
+        await update.message.reply_text("Usage:\n/assignjob 101 5\n\nPlease get the user ID from /users")
         return
     tg_id, u = get_user_by_short(short_id)
     if not u:
-        await update.message.reply_text("User not found. Check /users for correct ID.")
+        await update.message.reply_text("User not found. Please check /users for the correct ID.")
         return
     j = get_job(job_id)
     if not j:
-        await update.message.reply_text("Job not found. Check /jobs")
+        await update.message.reply_text("Job not found. Please check /jobs")
         return
     if job_id in u["my_jobs"]:
-        await update.message.reply_text("User already get this job.")
+        await update.message.reply_text("This user already has this job.")
         return
     u["my_jobs"].append(job_id)
     j["joined"] += 1
-    await update.message.reply_text(f"Gave {j['title']} to {u['name']} (ID: {short_id})")
+    await update.message.reply_text(f"Assigned {j['title']} to {u['name']} (ID: {short_id})")
     try:
-        await context.bot.send_message(tg_id, f"Congratulations {u['name']}!\n\nYou have been given a job:\n{j['title']} - {j['pay']}\n\nCheck /myjob to see am.")
+        await context.bot.send_message(tg_id, f"Congratulations {u['name']}!\n\nYou have been assigned a job:\n{j['title']} - {j['pay']}\n\nPlease check /myjob to view it.")
     except Exception:
         pass
 
 # ---------- CHAT: USER <-> ADMIN ----------
 async def message_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Send your message like this:\n/message I need help with my job")
+        await update.message.reply_text("Please send your message in this format:\n/message I need help with my job")
         return
     text = " ".join(context.args)
     uid = update.effective_user.id
     name = USERS.get(uid, {}).get("name", update.effective_user.first_name)
-    short_id = USERS.get(uid, {}).get("short_id", "No ID - send /start")
+    short_id = USERS.get(uid, {}).get("short_id", "No ID - please send /start")
     for aid in ADMIN_IDS:
         try:
             await context.bot.send_message(aid, f"Message from {name}\nID: {short_id}\n\n{text}\n\nReply with:\n/reply {short_id} your reply")
         except Exception:
             pass
-    await update.message.reply_text("Message sent to admin. Admin will reply you soon.")
+    await update.message.reply_text("Your message has been sent to admin. Admin will reply to you soon.")
 
 async def reply_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Only admin.")
+        await update.message.reply_text("Access denied. Admin only.")
         return
     try:
         short_id = int(context.args[0]); text = " ".join(context.args[1:])
@@ -267,7 +267,7 @@ async def reply_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tg_id, u = get_user_by_short(short_id)
         if not u:
-            await update.message.reply_text("User not found. Check /users")
+            await update.message.reply_text("User not found. Please check /users")
             return
         await context.bot.send_message(tg_id, f"Reply from Admin:\n\n{text}")
         await update.message.reply_text(f"Sent to {u['name']} (ID: {short_id})")
@@ -295,7 +295,7 @@ async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE
                     return
             except Exception:
                 pass
-        await msg.reply_text("To reply a user, use:\n/reply 101 your message\n\nGet ID from /users")
+        await msg.reply_text("To reply to a user, please use:\n/reply 101 your message\n\nPlease get the ID from /users")
         return
     name = USERS.get(uid, {}).get("name", update.effective_user.first_name)
     short_id = USERS.get(uid, {}).get("short_id", "No ID")
@@ -306,14 +306,14 @@ async def handle_all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE
             await msg.forward(aid)
         except Exception:
             pass
-    await msg.reply_text("Sent to admin. Admin will reply you soon.")
+    await msg.reply_text("Your message has been sent to admin. Admin will reply to you soon.")
 
 # ---------- ADMIN: ADD / EDIT / DELETE JOB ----------
 ADD_TITLE, ADD_PAY, ADD_NEEDED = range(3, 6)
 
 async def addjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Only admin.")
+        await update.message.reply_text("Access denied. Admin only.")
         return ConversationHandler.END
     await update.message.reply_text("What is the job title?")
     return ADD_TITLE
@@ -325,14 +325,14 @@ async def addjob_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addjob_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_pay"] = update.message.text
-    await update.message.reply_text("How many workers needed?")
+    await update.message.reply_text("How many workers are needed?")
     return ADD_NEEDED
 
 async def addjob_needed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         needed = int(update.message.text)
     except Exception:
-        await update.message.reply_text("Send number only.")
+        await update.message.reply_text("Please send a number only.")
         return ADD_NEEDED
     new_id = max([j["id"] for j in JOBS], default=0) + 1
     JOBS.append({"id": new_id, "title": context.user_data["new_title"], "pay": context.user_data["new_pay"], "needed": needed, "joined": 0})
@@ -341,7 +341,7 @@ async def addjob_needed(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def editjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Only admin.")
+        await update.message.reply_text("Access denied. Admin only.")
         return
     try:
         job_id = int(context.args[0]); field = context.args[1].lower(); value = " ".join(context.args[2:])
@@ -362,7 +362,7 @@ async def editjob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def deletejob_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Only admin.")
+        await update.message.reply_text("Access denied. Admin only.")
         return
     try:
         job_id = int(context.args[0])
@@ -406,7 +406,7 @@ def build_app():
 if __name__ == "__main__":
     print(f"TOKEN present: {bool(TOKEN)} len={len(TOKEN) if TOKEN else 0}", flush=True)
     if not TOKEN:
-        print("ERROR: BOT_TOKEN not set! Check FadeHost Env Vars", flush=True)
+        print("ERROR: BOT_TOKEN not set! Please check FadeHost Env Vars", flush=True)
         import time
         while True:
             time.sleep(60)
